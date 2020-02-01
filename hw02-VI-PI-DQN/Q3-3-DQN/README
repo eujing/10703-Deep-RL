@@ -1,0 +1,16 @@
+For Q2, edit the mode variable in the run.py file to generate output for various modes and fl_dim variable for diff envs.
+
+For Q3,
+All hyperparameters used are already include in the .py file
+
+To run Q3 training for:
+    CartPole: python DQN_Implementation.py --env CartPole-v0 --train 1
+    MountainCar: python DQN_Implementation.py --env MountainCar-v0 --train 1
+
+To run Q3 video rendering for:
+    CartPole: python DQN_Implementation.py --env CartPole-v0 --train 0 --render 1 --model <saved_weights_file.h5>
+    MountainCar: python DQN_Implementation.py --env MountainCar-v0 --train 0 --render 1 --model <saved_weights_file.h5>
+
+To create Q3 plots:
+    CartPole: python DQN_Implementation.py --env CartPole-v0 --train 0 --plot <metrics_file.json>
+    MountainCar: python DQN_Implementation.py --env MountainCar-v0 --train 0 --plot <metrics_file.json>

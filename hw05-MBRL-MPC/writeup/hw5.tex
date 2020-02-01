@@ -1,0 +1,320 @@
+\documentclass[12pt]{article}
+\usepackage[colorinlistoftodos]{todonotes}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{bm}
+\usepackage{enumerate}
+\usepackage{fancyvrb}
+\usepackage[top=1in, bottom=1in, left=1in, right=1in]{geometry}
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=cyan,
+}
+\usepackage{placeins}
+\usepackage{tikz}
+\usepackage{tikzsymbols}
+\usepackage{todonotes}
+\usepackage{bbm}
+\usepackage{color}
+\usepackage{mathrsfs}
+\usepackage{enumitem}
+\usepackage{algorithmicx}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{array}
+\usepackage{booktabs}
+
+% \renewcommand{\theenumi}{\roman{enumi}}
+\newcommand{\rmn}[1]{{\textcolor{blue}{\bf [{\sc rmn:} #1]}}}
+\DeclareMathOperator*{\argmax}{arg\,max}
+
+\usetikzlibrary{positioning,calc}
+%%%%%%%%%
+\usepackage[most]{tcolorbox}
+\newtcolorbox[]{solution}[1][]{%
+    breakable,
+    enhanced,
+    colback=white,
+    title=Solution,
+    #1
+}
+%%%%%%%%%%
+\begin{document}
+\section*{}
+\begin{center}
+  \centerline{\textsc{\LARGE  Homework 5}}
+  \vspace{1em}
+  \textsc{\large CMU 10-703: Deep Reinforcement Learning (Fall 2019)} \\
+  \centerline{OUT: Oct. 30, 2019}
+  \centerline{DUE: Nov. 16, 2019 by 11:59pm}
+\end{center}
+
+\section*{Instructions: START HERE}
+\begin{itemize}
+\item \textbf{Collaboration policy:} You may work in groups of up to three people for this assignment. It is also OK to get clarification (but not solutions) from books or online resources after you have thought about the problems on your own.  You are expected to comply with the University Policy on Academic Integrity and Plagiarism\footnote{\url{https://www.cmu.edu/policies/}}.
+
+\item\textbf{Late Submission Policy:} You are allowed a total of 10 grace days for your homeworks. However, no more than 3 grace days may be applied to a single assignment. Any assignment submitted after 3 days will not receive any credit.  Grace days do not need to be requested or mentioned in emails; we will automatically apply them to students who submit late. We will not give any further extensions so make sure you only use them when you are absolutely sure you need them.  See the Assignments and Grading Policy here for more information about grace days and late submissions: \url{https://cmudeeprl.github.io/703website/logistics/}
+
+\item\textbf{Submitting your work:} 
+
+\begin{itemize}
+
+% Since we are not using Canvas this semester.
+% \item \textbf{Canvas:} We will use an online system called Canvas for short answer and multiple choice questions. You can log in with your Andrew ID and password. (As a reminder, never enter your Andrew password into any website unless you have first checked that the URL starts with "https://" and the domain name ends in ".cmu.edu" -- but in this case it's OK since both conditions are met).  You may only \textbf{submit once} on canvas, so be sure of your answers before you submit.  However, canvas allows you to work on your answers and then close out of the page and it will save your progress.  You will not be granted additional submissions, so please be confident of your solutions when you are submitting your assignment.
+
+\item \textbf{Gradescope:} Please write your answers and copy your plots into the provided LaTeX template, and upload a PDF to the GradeScope assignment titled ``Homework 5.'' Additionally, upload your code (as a zip file) to the GradeScope assignment titled ``Homework 5: Code.'' Each team should only upload one copy of each part. Regrade requests can be made within one week of the assignment being graded.
+%\item %\textbf{Autolab:} Autolab is not used for this assignment.
+\end{itemize}
+\end{itemize}
+
+\newpage
+
+\section*{Collaborators}
+Please list your name and Andrew ID, as well as those of your collaborators.
+
+\section*{Environment}
+For this assignment, you will work with the \texttt{Pushing2D-v1} environment, note that this environment is slightly \textbf{different} from the one you used in the previous homework.  In particular, the state is now 12 dimensional and includes the velocity for the pusher and the box.  To recap, in order to make the environment using \texttt{gym}, you can use the following code:
+\begin{quote}
+\begin{verbatim}
+import gym
+import envs
+
+env = gym.make("Pushing2D-v1")
+\end{verbatim}
+\end{quote}
+Then you can interact with the environment as you usually do.  Similarly to Homework 4, the environment is considered ``solved'' once the percent of success (i.e., the box reaches the goal within the episode) reaches $90\%$. A \texttt{render} option is provided in the step function to provide a visualization.
+
+\section{Model-Based Reinforcement Learning with PETS}
+For this section, you will implement a model-based reinforcement learning (MBRL) method called \textbf{PETS} which stands for probabilistic ensemble and trajectory sampling \cite{chua2018deep}. 
+
+There are 3 main components to MBRL with PETS: 
+\begin{enumerate}
+    \item Probabilistic ensemble of networks: you will be using probabilistic networks that output a distribution over the resulting states given a state and action pair.  
+    \item Trajectory sampling: propagate hallucinated trajectories through time by passing hypothetical state-action pairs through different networks of the ensemble.  
+    \item Planning with model predictive control: Use the trajectory sampling method along with a cost function to perform planning and select good actions.
+\end{enumerate}
+We will start with the third component. You will first implement CEM and MPC and test it on a ground truth dynamics. Then, you will replace the ground truth dynamics with a learned, probabilistic ensemble dynamics model. It is recommended to go through all the questions before you start the implementation.
+
+\subsection{Planning with Cross Entropy Method(CEM) [20 pts]}
+\begin{algorithm}
+\label{algocem}
+\caption{Cross Entropy Method (CEM)\label{cem}}
+\begin{algorithmic}[1]
+\Procedure{CEM}{population size $M$, \# elites $e$, \# iters $I$, $\mu$, $\sigma$}
+\State \textbf{for} $i$ in $1:I$:
+\State Generate $M$ action sequences according to $\mu$ and $\sigma$ from normal distribution.
+\State $\quad$ \textbf{for} $m$ in $1:M$:
+\State $\quad\quad$ Generate a trajectory $\tau_m = (s_1, a_1, ..., a_{T}, s_{T+1})_m$ using the dynamics
+\State $\quad\quad\quad$  model $p(s_{t+1} | s_t, a_t)$ and the action sequence $a_{1:T, m}$.
+\State $\quad\quad$ Calculate the cost of $a_{1:T, m}$ based on $\tau_m$.
+\State $\quad$ Update $\mu$ and $\sigma$ using the top $e$ action sequences.  
+\State \textbf{return:} $\mu$
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+Before learning the model, let us first understand how do we obtain a policy from a dynamics model $p(s_{t+1} | s_t, a)$. One approach is to do Dyna-style training, where a model-free policy is trained on the imagined trajectories generated by the model. Another simpler approach is to do random shooting, where an action sequence $a_{t:t+\tau}$ is optimized on the model to minimize a cost, which often works well. The Cross Entropy Method (CEM) is one of the popular random shooting algorithms. To make things precise, we show CEM in Algorithm~\ref{cem}. Note that when updating the variance of the actions, we assume that the actions across time are independent.
+
+\textbf{Cost Function} In Line 7 of Algorithm~\ref{cem}, we need a cost function to evaluate the fitness of different states and action pairs.  Defining the right cost function is often the hardest part of getting model-based reinforcement learning to work, since the action selection and resulting trajectories from CEM depend on the cost function.  For this homework, you will be using the following cost function:
+\begin{equation}
+    \text{cost}(\textbf{pusher},\textbf{box},\textbf{goal},\textbf{a}) =d(\text{pusher}, \text{box}) + 2d(\text{box}, \text{goal}) + 5\Big|\frac{\text{box}_x}{\text{box}_y} - \frac{\text{goal}_x}{\text{goal}_y}\Big|
+\end{equation}
+This function is already implemented in \texttt{obs\_cost\_fn()} of \textit{mpc.py}. Given this state based cost, you can get the cost of a trajectory by summing up all the cost of all the states within one trajectory.
+
+\textbf{Policy from CEM} When sampling trajectories using a policy with CEM, given a state, we can run Algorithm~\ref{cem} and generate an action sequence of length $T$, which we can use in the future $T$ time steps. On top of CEM, one thing can be done to give better planning results is Model Predictive Control (MPC), where we only use the first action in the planned action sequence and re-run CEM for each time step. The pseudocode is shown in Algorithm~\ref{mpc}. MPC proceeds by starting with an initial $\mu$ and $\sigma$ and use that as input to CEM. Then we take the updated $\mu$ from CEM and execute the action in the first time step in the environment to get a new state that we use for MPC in the next time step.  We then update the $\mu$ that is used for the next timestep to be the $\mu$ from CEM for the remaining steps in the plan horizon and initialize the last time step to 0.  Finally, we return all the state transitions gathered so that they can be appended to $D$.  
+
+\textbf{Dynamics Model} In this problem, use the ground truth dynamics, which can be accessed through the \texttt{env.get\_nxt\_state} function, which takes in the current state and action and generate the next state. 
+
+The hyper-parameters are summarized in Table \ref{tab:hyper_params}.
+
+\begin{table*}[h]\centering
+\begin{tabular}{@{}lp{50mm}}
+\toprule
+Parameter & Value\\
+\midrule
+\hspace{5mm}Population size $M$ & 200 \\
+\hspace{5mm}\# elites $e$ & 20 \\
+\hspace{5mm}\# iters $I$ & 5 \\
+\hspace{5mm}\# plan horizon $T$ & 5 \\
+\hspace{5mm}Initial mean $\mu$ & \textbf{0} \\
+\hspace{5mm}Initial std $\sigma$ & 0.5\textbf{I} \\
+\bottomrule
+\end{tabular}
+\caption{Summarized hyper-parameters.}
+\label{tab:hyper_params}
+\end{table*}
+
+\begin{algorithm}
+\label{algompc}
+\caption{Generating an episode using MPC\label{mpc}}
+\begin{algorithmic}[1]
+\Procedure{MPC}{\text{env}, plan horizon $T$}
+\State $\texttt{transitions} = []$
+\State $s$ = $\texttt{env.reset()}$
+\State $\mu$ = \textbf{0}, $\sigma$ = 0.5\textbf{I} 
+\State \textbf{while} not done:
+\State $\quad \mu=$CEM(200, 20, 5, $\mu$, $\sigma$)
+\State $\quad a=\mu[0,:]$
+\State $\quad s' = \texttt{env.step(a)}$
+\State $\quad \texttt{transitions.append(}s, a, s'\texttt{)}$
+\State $\quad s = s'$
+\State $\quad \mu=\mu[1:T]\texttt{.append(}\textbf{0}\texttt{)}$
+\State $\textbf{return: } \texttt{transitions}$
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+\begin{enumerate}
+\item \textbf{(5 pts)} Implement CEM in \texttt{mpc.py} and test it on the \texttt{Pushing2D-v1} environment. The CEM policy you implement will also be used later for planning over a learned dynamics model. For all the questions in 1.1, we provide the starter code in the \texttt{ExperimentGTDynamics} class in \texttt{run.py}. All the hyper-parameters are provided in the code. Report the percentage of success over 50 episodes. 
+\begin{solution}
+\end{solution}
+
+\item \textbf{(5 pts)} Instead of CEM, plan with random action sequences where each action is generated independently from a normal distribution $\mathcal{N}(\bm{0}, 0.5\bm{I})$, where $\bm{I}$ is an identity matrix. Use the same number of trajectories for planning as CEM, i.e. for each state, sample M*I trajectories of length T and pick the best one. Report the percentage of success over 50 episodes. How does its performance compare to CEM?
+\begin{solution}
+\end{solution}
+
+\item \textbf{(10 pts)} 
+\begin{enumerate}
+\item (2 pts) Implement MPC for sampling trajectories.
+\item (5 pts) We provide another environment \texttt{Pushing2DNoisyControl-v1}, where a control noise is added to the algorithm. Test the two algorithm CEM and MPC+CEM on both environments and report the percentage of success over 50 episodes for each of them. 
+\item (3 pts) Which algorithm performs better on which environments? Why? Discuss the pros and cons of MPC.
+\end{enumerate}
+\begin{solution}
+\end{solution}
+
+\end{enumerate}
+
+\subsection{Probabilistic Ensemble and Trajectory Sampling (PETS) [60 pts]}
+\subsubsection*{Probabilistic Ensemble}
+Now, we will first try to learn a single probabilistic dynamics model but will show the algorithm in the form of learning the probabilistic ensemble.
+
+You are provided starter code in \texttt{model.py} that specifies that model architecture that you will be using for each member of the ensemble.  Specifically, each network is a fully connected network with 3-hidden layers, each with 400 hidden nodes.  If you have trouble running this network, a smaller network may work as well, but may require additional hyperparameter tuning.  The starter code also includes a method for calculating the output of each network, which will return the mean and log variance of the resulting states.  
+
+The training routine for the ensemble is shown in Algorithm~\ref{train}. Consider defining a list of operations that you can run simultaneously with a single call to \texttt{Session.run()}.  This will help speed up training significantly.
+\begin{algorithm}
+\label{alga2c}
+\caption{Training the Probabilistic Ensemble}\label{train}
+\begin{algorithmic}[1]
+\Procedure{train}{data $D$, \# networks $N$, \# epochs $E$}
+\State Sample $|D|$ transitions from $D$ for each network (sample with replacement).
+\State \textbf{for} $e$ in $1:E$:
+\State $\quad$ \textbf{for} $n$ in $1:N$: 
+\State $\quad\quad$ Shuffle the sampled transitions for network $n$.
+\State $\quad\quad$ Form batches of size \textbf{128}.
+\State $\quad\quad$ Loop through batches and take a gradient step of the loss for each batch.
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+\textbf{Single probabilistic network (25 pts)}
+Implement and train a single probabilistic network for 100 epochs on transitions from 1000 randomly sampled episodes and answer the following questions.
+
+Note: As the dynamics model is now probabilistic, when planning over the model using CEM (i.e. when generating trajectories from the dynamics model), you should sample $P$ trajectories and use the average cost of the $P$ trajectories. In this homework, we recommend using $P=6$.
+
+\begin{enumerate}
+    \item (5 pts) The loss that you should use to train each network is the negative log likelihood of the actual resulting state under the predicted mean and variance from the network. Given state transition pairs $s_t, a_t, s_{t+1}$, assuming the output distribution of the network is a Gaussian distribution $\mathcal{N}(\mu_\theta(s_n,a_n), \Sigma_\theta),$ where $\mu_\theta$ and $\Sigma_\theta$ are outputs of the network. Derived the loss function $\mathcal{L}_{\text{Gauss}}$ for training the network.
+    \begin{solution}
+    \end{solution}
+    
+Note that as shown in this equation, both the $\mu$ and the $\Sigma$ depend on the input state and action.  
+    \item (5 pts) Plot the loss and RMSE vs number of epochs trained for the single network.
+    \begin{solution}
+    \end{solution}
+    \item (5 pts) Combine your model with planning using randomly sampled actions + MPC.  Evaluate the performance of your model when planning using a time horizon of 5 and 1000 possible action sequences.  Do this by reporting the percent successes on 50 episodes.
+    \begin{solution}
+    \end{solution}
+    \item (10 pts) Combine your model with planning using CEM+MPC.  Evaluate the performance of your model when planning using a time horizon of 5, a population of 200, 20 elites, and 5 epochs.  Do this by reporting the percent successes on 50 episodes.
+    \begin{solution}
+    \end{solution}
+    \item (5 pts) Which planning method performs better, random or CEM?  How did MPC using this model perform in general?  When is the derived policy able to succeed and when does it fail?
+    \begin{solution}
+    \end{solution}
+\end{enumerate}
+
+
+\subsubsection*{Trajectory Sampling}
+With an ensemble of probabilistic dynamics model, how do we we sample trajectories from the ensemble model? You will implement one approach called TS1 sampling, which randomly picks one of the dynamics model at each time step of the trajectories. Algorithm~\ref{ts1} shows how TS1 determines which network to use for each time step. It is only one component of model predictive control and will be combined with the model and the planning method.
+
+Similar to single probabilistic case, we will sample $P$ trajectories or particles, each of which represents a trajectory of length $T$.
+
+\begin{algorithm}
+\label{alga2c}
+\caption{MBRL with PETS\label{pets}}
+\begin{algorithmic}[1]
+\Procedure{MBRL}{\# of epochs $I$}
+\State Initialize empty data array $D$ and initialize probabilistic ensemble (PE) of models.
+\State Sample 100 episodes from the environment using random actions and store into $D$. 
+\State Train ensemble of networks for 10 epochs.
+\State \textbf{repeat} for $I$ epochs:
+\State $\quad$ Sample 1 episode using MPC and latest PE and add to $D$.
+\State $\quad$ Train PE for $5$ epochs over $D$.
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}
+\label{alga2c}
+\caption{Trajectory Sampling with TS1\label{ts1}}
+\begin{algorithmic}[1]
+\Procedure{TS1}{\# networks $N$, \# particles $P$, plan horizon $T$}
+\State Initialize array $S$ of dimension $P\times T$ to store network assignments for each particle.
+\State \textbf{for} $p$ in $1:P$:
+\State $\quad$ Randomly sample a sequence $s$ of length $T$ where $s\in \{1,\dots,N\}^T$.
+\State $\quad$ Set $S[p,:] = s$.
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+
+% \subsection*{Part 3: Action Selection with Cross Entropy Method}
+% We can now use TS1, along with the cost function, to estimate the cost of a particular action sequence $a_{1:T}$ from state $s_0$.  Let $TS$ be the output of TS1 for our settings of $N, P, T$ and let $s_{(p,t)} = \text{model}_{TS[p,t]}.\text{predict}(s_{(p, t-1)}, a_t)$; that is, the next state for a given particle is the predicted state from the model indicated by $TS$ for the given particle and time step applied to the last state of the particle with the given action from $a_{1:T}$ (remember that we are using a probabilistic model so the output is a sample from a normal distribution).    We can now calculate the cost of a state and action sequence pair as the sum of the average of the cost over all particles:
+% \begin{equation}\label{eq:cost}
+%     \text{C}(a_{1:T}, s) = \frac{1}{P}\sum_{p=1}^P\sum_{t=1}^T \text{cost}(s_{(p,t)},a_t) 
+% \end{equation}
+% where $s_{(p,t)}$ is calculated as described above.  
+
+\textbf{MBRL with PETS (35 pts)}.  
+
+\begin{enumerate}
+    \setcounter{enumi}{5}
+    \item (5 pts) Describe in detail your implementation of PETS. Include how you implement CEM, MPC, TS1. Include any additional hyper-parameters you need to tune other than the default hyper-parameters. Your response should walk the reader through your submitted code so that he/she will understand the key components of your implementation and be able to run your code with different arguments.
+    \begin{solution}
+    \end{solution}
+    \item (10 pts) Run Algorithm~\ref{pets} for 500 epochs (i.e., collect 100 initial episodes and then 500 episodes using MPC).  Plot the loss and RMSE vs number of epochs trained. This can take hours to run. Read though all the questions below before you start running this experiment.
+    \begin{solution}
+    \end{solution}
+    \item (10 pts) Every 50 epochs, test your model with both CEM+MPC and random actions+MPC on 20 episodes and report the percent of successes.  Plot this as a function of the number of epochs of PETS. Which planning algorithm performs better? Combine this result with the observation in the single dynamics model and the ground truth dynamics cases, and discuss the comparison between CEM+MPC and random actions + MPC. Make sure to include both your observations and your explaination.
+    \begin{solution}
+    \end{solution}
+    \item (5 pts) What are some limitations of MBRL?  Under which scenarios would you prefer MBRL to policy gradient methods like the ones you implemented in the previous homeworks?
+    \begin{solution}
+    \end{solution}
+\end{enumerate}
+
+\section{Theoretical Questions [20 pts]} 
+\begin{enumerate}
+\item (10 pts) Given an MDP with stochastic dynamics, i.e.
+$$ \exists s, a, s', \text{such that}, 0<p(s' | s, a)<1, $$ is it possible to fit to it deterministic dynamics such that the optimal policy we learn from the fitted dynamics is also the optimal policy in the stochastic dynamics? To be more specific, for any stochastic dynamics $p$, can we always find dynamics $\hat{p}(s' | s, a),$ such that
+$$ p(s'|s,a)=0 \Rightarrow  \hat{p}(s'|s, a) = 0, $$
+$$ \forall s, a, \exists s', \text{such that } \hat{p}(s'|s,a) =1, $$ and the optimal policy on $\hat{p}$, $\pi_{\hat{p}}$, is also an optimal policy $\pi^*_p$ on $p$? Here the first constraint provides weak conditions that the deterministic dynamics is a possible fit to the stochastic dynamics and the second constraint is the definition of deterministic dynamics. If we can always find such dynamics $\hat{p}$, give the proof. If we cannot, give an example.
+\begin{solution}
+\end{solution}
+\item (5 pts) \textbf{Aleatoric vs epistemic uncertainty.} Aleatoric uncertainty is also known as statistical uncertainty and represents the random variability that is unpredictable, such as the outcome of a dice roll. Aleatoric uncertainty cannot be resolved by gathering more information. Epistemic uncertainty, also known as systematic uncertainty, which can be resolved by gathering more information. In the case of model-based RL, aleatoric uncertainty refers to the uncertainty due to the stochasticity in the environment and epistemic refers to the model error due to the capacity of the neural network or the difficulty in optimization. In the PETS framework, describe how we can measure the aleatoric and epistemic uncertainty. Make sure your description is specific such that a reader would be able to write practical algorithms to measure the two uncertainties based on your description.
+\begin{solution}
+\end{solution}
+\item (5 pts) What is the failure mode if the aleatoric uncertainty is not considered? What is the failure mode if the epistemic uncertainty is not considered? In other word, describe in what ways a model-based agent will fail in these two cases.
+\begin{solution}
+\end{solution}
+
+\end{enumerate}
+
+\section*{\textcolor{red}{Important Implementation Advice}}
+\ \\
+It takes quite a while to run the experiments in this homework.  Please plan accordingly and get started early! Please turn your homework in on time to facilitate grading!  Again, to make debugging easier, you should implement your code piecewise and test each component as you build up your implementation, i.e., test the probabilistic ensemble, test the trajectory sampling, test the cross entropy method, test the cost calculation, test the MPC, etc.
+%\nocite{*}
+\bibliographystyle{plain}
+\bibliography{deeprlhw5}
+
+\end{document}
+

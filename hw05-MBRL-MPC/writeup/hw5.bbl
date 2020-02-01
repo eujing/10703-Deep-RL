@@ -1,0 +1,10 @@
+\begin{thebibliography}{1}
+
+\bibitem{chua2018deep}
+Kurtland Chua, Roberto Calandra, Rowan McAllister, and Sergey Levine.
+\newblock Deep reinforcement learning in a handful of trials using
+  probabilistic dynamics models.
+\newblock In {\em Advances in Neural Information Processing Systems}, pages
+  4754--4765, 2018.
+
+\end{thebibliography}

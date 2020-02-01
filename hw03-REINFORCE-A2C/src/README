@@ -1,0 +1,11 @@
+For REINFORCE, the default learning rate is already set the one used to produce my results, so:
+
+python reinforce.py --num-episodes 50000
+
+For A2C, the default learning rates are already set to the ones I used in my results, so:
+
+python a2c.py --num-episodes 50000 --n <N>
+
+Both of these functions produce a results_<algorithm_name>_<setting>.json, which can be used to produce plots with:
+
+python plot_<algorithm_name>.py
